@@ -1,20 +1,368 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit3, Save, XCircle } from 'lucide-react'; // Icons
+import { useAuth } from "react-oidc-context";
+// Define the CSS directly as a string
+const appStyles = `
+/* Global styles for HTML and Body to ensure full viewport coverage */
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100vw; /* Ensure it takes full viewport width */
+    height: 100vh; /* Ensure it takes full viewport height */
+    overflow-x: hidden; /* Prevent horizontal scrolling */
+    display: block; /* Ensure it behaves as a block element filling space */
+    font-family: 'Inter', sans-serif; /* Set font globally */
+}
+
+/* Base container and card styles (mobile-first) */
+.container {
+    min-height: 100vh;
+    background: linear-gradient(to bottom right, #6366f1, #9333ea);
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Centers children horizontally in a column flex container */
+    justify-content: center;
+    padding: 1rem;
+    color: #374151;
+    width: 100%; /* Explicitly ensure container takes full width of its parent */
+    box-sizing: border-box; /* Include padding in width calculation */
+}
+
+.card {
+    background-color: #ffffff;
+    padding: 2rem;
+    border-radius: 0.75rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    width: 100%; /* Take full width up to max-width */
+    max-width: 28rem; /* Default max-width for smaller screens (e.g., mobile), adjust as needed */
+    margin: 0 auto; /* Explicitly center the card horizontally */
+    box-sizing: border-box; /* Include padding in width calculation */
+}
+
+.heading {
+    font-size: 1.875rem;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 1.5rem;
+    color: #374151;
+}
+
+.subHeading {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #4b5563;
+    margin-bottom: 0.5rem;
+}
+
+/* Messages */
+.message {
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    color: #ffffff;
+}
+
+.errorMessage {
+    background-color: #ef4444;
+}
+
+.successMessage {
+    background-color: #22c55e;
+}
+
+.errorMessageAlt {
+    color: #dc2626;
+    text-align: center;
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background-color: #fee2e2;
+    border-radius: 0.5rem;
+    border: 1px solid #fca5a5;
+}
+
+/* Input Fields */
+.inputField {
+    flex: 1;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    outline: none;
+    transition-property: all;
+    transition-duration: 200ms;
+}
+.inputField:focus {
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5);
+}
+
+/* Buttons */
+.addButton {
+    background-color: #4f46e5;
+    color: #ffffff;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    transition-property: all;
+    transition-duration: 200ms;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    outline: none;
+}
+.addButton:hover {
+    background-color: #4338ca;
+}
+.addButton:focus {
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5), 0 0 0 4px rgba(99, 102, 241, 0.5);
+}
+.addButton:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+
+
+/* Add Section */
+.addSection {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+}
+
+/* Search Section */
+.searchSection {
+    margin-bottom: 1.5rem;
+}
+
+/* Loading Spinner */
+.loadingMessage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #4338ca;
+    margin-bottom: 1rem;
+}
+.spinner {
+    animation: spin 1s linear infinite;
+    height: 1.25rem;
+    width: 1.25rem;
+    margin-right: 0.75rem;
+}
+.spinnerPath {
+    opacity: 0.25;
+}
+.spinnerFill {
+    opacity: 0.75;
+}
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Empty List Message */
+.emptyList {
+    text-align: center;
+    color: #6b7280;
+}
+
+/* Product List */
+.productList {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.productItem {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    background-color: #f9fafb;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    transition-property: all;
+    transition-duration: 200ms;
+}
+.productItem:hover {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.productDetails {
+    flex: 1;
+    width: 100%;
+}
+
+.productName {
+    color: #1f2937;
+    font-weight: 600;
+    font-size: 1.125rem;
+}
+
+.productInfo {
+    color: #4b5563;
+    font-size: 0.875rem;
+}
+
+.itemActions {
+    display: flex;
+    gap: 0.25rem;
+    margin-left: auto;
+    margin-top: 0.75rem;
+}
+
+.editButton,
+.deleteButton,
+.saveButton,
+.cancelButton {
+    padding: 0.5rem;
+    border-radius: 9999px;
+    transition-property: all;
+    transition-duration: 200ms;
+}
+.editButton:hover,
+.deleteButton:hover,
+.saveButton:hover,
+.cancelButton:hover {
+    background-color: #e5e7eb;
+}
+.editButton { color: #2563eb; }
+.editButton:hover { color: #1d4ed8; }
+.deleteButton { color: #dc2626; }
+.deleteButton:hover { color: #b91c1c; }
+.saveButton { color: #16a34a; }
+.saveButton:hover { color: #15803d; }
+.cancelButton { color: #dc2626; }
+.cancelButton:hover { color: #b91c1c; }
+.editButton:disabled,
+.deleteButton:disabled,
+.saveButton:disabled,
+.cancelButton:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+
+/* Editing Form within List Item */
+.editForm {
+    flex: 1;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    padding-right: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.editInputField {
+    padding: 0.5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    outline: none;
+}
+.editInputField:focus {
+    box-shadow: 0 0 0 1px rgba(147, 51, 234, 0.5);
+}
+
+.editActions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+
+/* --- Responsive Breakpoints --- */
+
+@media (min-width: 768px) {
+    .card {
+        max-width: 48rem; /* Increased max-width for md screens */
+    }
+    .productItem {
+        flex-direction: row;
+        align-items: center;
+    }
+    .itemActions {
+        margin-top: 0;
+    }
+    .editForm {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-bottom: 0;
+    }
+    .editActions {
+        grid-column: span 2 / span 2;
+    }
+}
+
+@media (min-width: 1024px) { /* Optional: for larger desktop screens */
+    .card {
+        max-width: 60rem; /* Even wider on large desktops */
+    }
+}
+`;
+
 
 // Main App Component
 const App = () => {
-    // State variables for items, new item input, editing item, loading, and error
+  const auth = useAuth();
+
+  const signOutRedirect = () => {
+    const clientId = "2p067oa8sj2k0u9llme1f05kj3";
+    const logoutUri = "https://d1s0dilg6yxd4e.cloudfront.net/";
+    const cognitoDomain = "https://us-east-1njntfpana.auth.us-east-1.amazoncognito.com";
+    
+    window.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
+  };
+  console.log(auth)
+   if (auth.isLoading) {
+    return <div>Loading...</div>;
+  }
+
+  if (auth.error) {
+    return <div>Encountering error... {auth.error.message}</div>;
+  }
+
+    // Inject styles into the document head on component mount
+    useEffect(() => {
+        const styleTag = document.createElement('style');
+        styleTag.type = 'text/css';
+        styleTag.appendChild(document.createTextNode(appStyles));
+        document.head.appendChild(styleTag);
+
+        // Cleanup on unmount (optional for single-page apps unless component is repeatedly mounted/unmounted)
+        return () => {
+            document.head.removeChild(styleTag);
+        };
+    }, []); // Empty dependency array ensures this runs only once on mount
+
+
+    // State variables for items, new product input, editing product, loading, and error
     const [items, setItems] = useState([]);
-    const [newItemName, setNewItemName] = useState('');
-    const [editingItemId, setEditingItemId] = useState(null);
-    const [editingItemName, setEditingItemName] = useState('');
+    const [newProductName, setNewProductName] = useState('');
+    const [newQuantity, setNewQuantity] = useState('');
+    const [newPrice, setNewPrice] = useState('');
+
+    const [editingProductId, setEditingProductId] = useState(null);
+    const [editingProductName, setEditingProductName] = useState('');
+    const [editingQuantity, setEditingQuantity] = useState('');
+    const [editingPrice, setEditingPrice] = useState('');
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [message, setMessage] = useState(''); // For success/error messages
 
+    // New state for search term
+    const [searchTerm, setSearchTerm] = useState('');
+
     // Placeholder for your API Gateway base URL
     // IMPORTANT: Replace this with your actual AWS API Gateway URL
-    const API_BASE_URL = 'YOUR_API_GATEWAY_BASE_URL'; // e.g., 'https://xxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/items'
+    const API_BASE_URL = 'https://8iduc6xqo8.execute-api.us-east-1.amazonaws.com/dev'; // e.g., 'https://xxxxxxxxx.execute-api.us-east-1.amazonaws.com/prod/products'
 
     // Helper function to show messages
     const showMessage = (msg, type = 'success') => {
@@ -28,13 +376,13 @@ const App = () => {
             setLoading(true);
             setError(null);
             try {
-                // Adjust the URL based on your API Gateway setup for GET /items
-                const response = await fetch(`${API_BASE_URL}`);
+                const response = await fetch(`${API_BASE_URL}/products?user=${auth.user?.profile.email}`);
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                const data = await response.json();
-                // Assuming data is an array of objects like { id: '...', name: '...' }
+                let data = await response.json();
+                console.log(auth)
+                // data = data.filter(d => d.user === auth.user?.profile.email);
                 setItems(data);
             } catch (err) {
                 setError(`Failed to fetch items: ${err.message}`);
@@ -47,23 +395,40 @@ const App = () => {
         fetchItems();
     }, [API_BASE_URL]);
 
+    // Filter items based on searchTerm (client-side filtering for demonstration)
+    const filteredItems = items.filter(item =>
+        item.productname.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     // --- CREATE Operation ---
     const handleAddItem = async () => {
-        if (!newItemName.trim()) {
-            showMessage('Item name cannot be empty!', 'error');
+        if (!newProductName.trim() || !newQuantity || !newPrice) {
+            showMessage('All fields are required!', 'error');
+            return;
+        }
+        if (isNaN(newQuantity) || newQuantity < 0) {
+            showMessage('Quantity must be a non-negative number!', 'error');
+            return;
+        }
+        if (isNaN(newPrice) || newPrice < 0) {
+            showMessage('Price must be a non-negative number!', 'error');
             return;
         }
 
         setLoading(true);
         setError(null);
         try {
-            // Adjust the URL based on your API Gateway setup for POST /items
-            const response = await fetch(`${API_BASE_URL}`, {
+            const response = await fetch(`${API_BASE_URL}/products`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ name: newItemName }),
+                body: JSON.stringify({
+                    productname: newProductName,
+                    quantity: parseInt(newQuantity, 10),
+                    price: parseFloat(newPrice),
+                    user: auth.user?.profile.email
+                }),
             });
 
             if (!response.ok) {
@@ -72,8 +437,10 @@ const App = () => {
             }
 
             const addedItem = await response.json();
-            setItems([...items, addedItem]); // Add the new item returned by the backend
-            setNewItemName('');
+            setItems([...items, addedItem]);
+            setNewProductName('');
+            setNewQuantity('');
+            setNewPrice('');
             showMessage('Item added successfully!');
         } catch (err) {
             setError(`Failed to add item: ${err.message}`);
@@ -84,12 +451,11 @@ const App = () => {
     };
 
     // --- DELETE Operation ---
-    const handleDeleteItem = async (id) => {
+    const handleDeleteItem = async (productId) => {
         setLoading(true);
         setError(null);
         try {
-            // Adjust the URL based on your API Gateway setup for DELETE /items/{id}
-            const response = await fetch(`${API_BASE_URL}/${id}`, {
+            const response = await fetch(`${API_BASE_URL}/products/${productId}`, {
                 method: 'DELETE',
             });
 
@@ -98,7 +464,7 @@ const App = () => {
                 throw new Error(`HTTP error! status: ${response.status} - ${errorData.message || 'Unknown error'}`);
             }
 
-            setItems(items.filter((item) => item.id !== id)); // Remove item from local state
+            setItems(items.filter((item) => item.productid !== productId));
             showMessage('Item deleted successfully!');
         } catch (err) {
             setError(`Failed to delete item: ${err.message}`);
@@ -110,27 +476,40 @@ const App = () => {
 
     // --- UPDATE (Start Editing) Operation ---
     const handleEditClick = (item) => {
-        setEditingItemId(item.id);
-        setEditingItemName(item.name);
+        setEditingProductId(item.productid);
+        setEditingProductName(item.productname);
+        setEditingQuantity(item.quantity);
+        setEditingPrice(item.price);
     };
 
     // --- UPDATE (Save Edited Item) Operation ---
-    const handleSaveEdit = async (id) => {
-        if (!editingItemName.trim()) {
-            showMessage('Item name cannot be empty!', 'error');
+    const handleSaveEdit = async (productId) => {
+        if (!editingProductName.trim() || !editingQuantity || !editingPrice) {
+            showMessage('All fields are required!', 'error');
+            return;
+        }
+        if (isNaN(editingQuantity) || editingQuantity < 0) {
+            showMessage('Quantity must be a non-negative number!', 'error');
+            return;
+        }
+        if (isNaN(editingPrice) || editingPrice < 0) {
+            showMessage('Price must be a non-negative number!', 'error');
             return;
         }
 
         setLoading(true);
         setError(null);
         try {
-            // Adjust the URL based on your API Gateway setup for PUT /items/{id}
-            const response = await fetch(`${API_BASE_URL}/${id}`, {
+            const response = await fetch(`${API_BASE_URL}/products/${productId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ name: editingItemName }),
+                body: JSON.stringify({
+                    productname: editingProductName,
+                    quantity: parseInt(editingQuantity, 10),
+                    price: parseFloat(editingPrice)
+                }),
             });
 
             if (!response.ok) {
@@ -138,14 +517,22 @@ const App = () => {
                 throw new Error(`HTTP error! status: ${response.status} - ${errorData.message || 'Unknown error'}`);
             }
 
-            // Update item in local state
             setItems(
                 items.map((item) =>
-                    item.id === id ? { ...item, name: editingItemName } : item
+                    item.productid === productId ?
+                    {
+                        ...item,
+                        productname: editingProductName,
+                        quantity: parseInt(editingQuantity, 10),
+                        price: parseFloat(editingPrice)
+                    } :
+                    item
                 )
             );
-            setEditingItemId(null); // Exit editing mode
-            setEditingItemName('');
+            setEditingProductId(null);
+            setEditingProductName('');
+            setEditingQuantity('');
+            setEditingPrice('');
             showMessage('Item updated successfully!');
         } catch (err) {
             setError(`Failed to update item: ${err.message}`);
@@ -157,110 +544,169 @@ const App = () => {
 
     // Handle cancel editing
     const handleCancelEdit = () => {
-        setEditingItemId(null);
-        setEditingItemName('');
+        setEditingProductId(null);
+        setEditingProductName('');
+        setEditingQuantity('');
+        setEditingPrice('');
     };
+  if (auth.isAuthenticated) {
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-500 to-purple-600 flex flex-col items-center justify-center p-4 font-inter text-gray-800">
-            <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md">
-                <h1 className="text-3xl font-bold text-center mb-6 text-gray-800">CRUD App with AWS</h1>
+        <div className="container">
+            <div className="card">
+          
+                <h1 className="heading">ANN Traders Product Management</h1>
 
                 {/* Message display */}
                 {message.text && (
-                    <div className={`p-3 mb-4 rounded-lg text-sm text-white ${message.type === 'error' ? 'bg-red-500' : 'bg-green-500'}`}>
+                    <div className={`message ${message.type === 'error' ? 'errorMessage' : 'successMessage'}`}>
                         {message.text}
                     </div>
                 )}
 
                 {/* Add New Item */}
-                <div className="flex gap-2 mb-6">
+                <div className="addSection">
+                    <h2 className="subHeading">Add New Product</h2>
                     <input
                         type="text"
-                        className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-400 outline-none transition-all duration-200"
-                        placeholder="Add new item"
-                        value={newItemName}
-                        onChange={(e) => setNewItemName(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleAddItem()}
+                        className="inputField"
+                        placeholder="Product Name"
+                        value={newProductName}
+                        onChange={(e) => setNewProductName(e.target.value)}
+                    />
+                    <input
+                        type="number"
+                        className="inputField"
+                        placeholder="Quantity"
+                        value={newQuantity}
+                        onChange={(e) => setNewQuantity(e.target.value)}
+                        min="0"
+                    />
+                    <input
+                        type="number"
+                        className="inputField"
+                        placeholder="Price"
+                        value={newPrice}
+                        onChange={(e) => setNewPrice(e.target.value)}
+                        step="0.01"
+                        min="0"
                     />
                     <button
                         onClick={handleAddItem}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-lg shadow-md transition-all duration-200 flex items-center justify-center gap-1 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2"
+                        className="addButton"
                         disabled={loading}
                     >
                         <Plus size={20} />
-                        Add
+                        Add Product
                     </button>
+                </div>
+
+                {/* Search Bar */}
+                <div  className="addSection">
+                    <input
+                        type="text"
+                        className="inputField"
+                        placeholder="Search products by name..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
                 </div>
 
                 {/* Loading and Error Indicators */}
                 {loading && (
-                    <div className="flex items-center justify-center text-indigo-700 mb-4">
-                        <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    <div className="loadingMessage">
+                        <svg className="spinner" viewBox="0 0 24 24">
+                            <circle className="spinnerPath" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="spinnerFill" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
                         Loading...
                     </div>
                 )}
                 {error && (
-                    <div className="text-red-600 text-center mb-4 p-3 bg-red-100 rounded-lg border border-red-200">
+                    <div className="errorMessageAlt">
                         {error}
                     </div>
                 )}
 
                 {/* Item List */}
-                {items.length === 0 && !loading && !error ? (
-                    <p className="text-center text-gray-500">No items found. Add one!</p>
+                <h2 className="subHeading">Product List</h2>
+                {filteredItems.length === 0 && !loading && !error && searchTerm ? (
+                    <p className="emptyList">No products found matching "{searchTerm}".</p>
+                ) : filteredItems.length === 0 && !loading && !error ? (
+                    <p className="emptyList">No products found. Add one!</p>
                 ) : (
-                    <ul className="space-y-3">
-                        {items.map((item) => (
+                    <ul className="productList">
+                        {filteredItems.map((item) => (
                             <li
-                                key={item.id}
-                                className="flex items-center bg-gray-50 p-3 rounded-lg shadow-sm transition-all duration-200 hover:shadow-md"
+                                key={item.productid}
+                                className="productItem"
                             >
-                                {editingItemId === item.id ? (
+                                {editingProductId === item.productid ? (
                                     // Editing mode
-                                    <div className="flex-1 flex gap-2 items-center">
+                                    <div className="editForm">
                                         <input
                                             type="text"
-                                            value={editingItemName}
-                                            onChange={(e) => setEditingItemName(e.target.value)}
-                                            className="flex-1 p-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-purple-400 outline-none"
+                                            value={editingProductName}
+                                            onChange={(e) => setEditingProductName(e.target.value)}
+                                            className="editInputField"
+                                            placeholder="Product Name"
                                         />
-                                        <button
-                                            onClick={() => handleSaveEdit(item.id)}
-                                            className="text-green-600 hover:text-green-700 p-2 rounded-full hover:bg-gray-200 transition-all duration-200"
-                                            disabled={loading}
-                                        >
-                                            <Save size={20} />
-                                        </button>
-                                        <button
-                                            onClick={handleCancelEdit}
-                                            className="text-red-600 hover:text-red-700 p-2 rounded-full hover:bg-gray-200 transition-all duration-200"
-                                            disabled={loading}
-                                        >
-                                            <XCircle size={20} />
-                                        </button>
+                                        <input
+                                            type="number"
+                                            value={editingQuantity}
+                                            onChange={(e) => setEditingQuantity(e.target.value)}
+                                            className="editInputField"
+                                            placeholder="Quantity"
+                                            min="0"
+                                        />
+                                        <input
+                                            type="number"
+                                            value={editingPrice}
+                                            onChange={(e) => setEditingPrice(e.target.value)}
+                                            className="editInputField"
+                                            placeholder="Price"
+                                            step="0.01"
+                                            min="0"
+                                        />
+                                        <div className="editActions">
+                                            <button
+                                                onClick={() => handleSaveEdit(item.productid)}
+                                                className="saveButton"
+                                                disabled={loading}
+                                            >
+                                                <Save size={20} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleCancelEdit()} // Corrected: Removed redundant argument
+                                                className="cancelButton"
+                                                disabled={loading}
+                                            >
+                                                <XCircle size={20} />
+                                            </button>
+                                        </div>
                                     </div>
                                 ) : (
                                     // Display mode
-                                    <span className="flex-1 text-gray-700 text-lg">{item.name}</span>
+                                    <div className="productDetails">
+                                        <p className="productName">{item.productname}</p>
+                                        <p className="productInfo">Quantity: {item.quantity}</p>
+                                        <p className="productInfo">Price: ${item.price ? item.price.toFixed(2) : 'N/A'}</p>
+                                    </div>
                                 )}
 
                                 {/* Action buttons (only visible if not editing) */}
-                                {editingItemId !== item.id && (
-                                    <div className="flex gap-1 ml-auto">
+                                {editingProductId !== item.productid && (
+                                    <div className="itemActions">
                                         <button
                                             onClick={() => handleEditClick(item)}
-                                            className="text-blue-600 hover:text-blue-700 p-2 rounded-full hover:bg-gray-200 transition-all duration-200"
+                                            className="editButton"
                                             disabled={loading}
                                         >
                                             <Edit3 size={20} />
                                         </button>
                                         <button
-                                            onClick={() => handleDeleteItem(item.id)}
-                                            className="text-red-600 hover:text-red-700 p-2 rounded-full hover:bg-gray-200 transition-all duration-200"
+                                            onClick={() => handleDeleteItem(item.productid)}
+                                            className="deleteButton"
                                             disabled={loading}
                                         >
                                             <Trash2 size={20} />
@@ -271,9 +717,19 @@ const App = () => {
                         ))}
                     </ul>
                 )}
+                
+              <div className="addSection"> <button className='addButton' onClick={() => signOutRedirect()}  disabled={loading}>Sign out</button> </div>
             </div>
         </div>
     );
+  }
+  return (
+    
+    <div className="card">
+      <h1 className="heading">Welcome to ANN Traders!</h1>
+      <button className="addButton" onClick={() => auth.signinRedirect()}>Sign in</button>
+    </div>
+  );
 };
 
 export default App;

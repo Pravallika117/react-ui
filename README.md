@@ -20,3 +20,5 @@ At this point, the applcation is not secured and cannot be accessed, To secure a
 To enable authentication use Cognito. 
 
 This application is integrated with lambda application through an API gateway service. The requests are authorized by sending id_token of the user to the API gateway for every request. The expectation that every request should be authorized is also configured in the API gateway(for every method of every resource)
+
+This UI application is also integrated with S3, to generate a SIGNED URL for audio files in a separate s3 bucket. This is acheived through a concept called Cognito Identity pool which would provide temporary tokens to the access the AWS services.

@@ -8,6 +8,7 @@ const cognitoAuthConfig = {
   authority: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_njntFpaNa",
   client_id: "2p067oa8sj2k0u9llme1f05kj3",
   redirect_uri: "https://d1s0dilg6yxd4e.cloudfront.net/",
+  // redirect_uri: "http://localhost:5173/",
   response_type: "code",
   scope: "email openid phone",
 };

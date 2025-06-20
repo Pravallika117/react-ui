@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit3, Save, XCircle } from 'lucide-react'; // Icons
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Plus, Trash2, Edit3, Save, XCircle, Volume2 , Link as LinkIcon} from 'lucide-react'; // Icons
 import { useAuth } from "react-oidc-context";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { fromCognitoIdentityPool } from "@aws-sdk/credential-provider-cognito-identity";
 // Define the CSS directly as a string
 const appStyles = `
 /* Global styles for HTML and Body to ensure full viewport coverage */
 html, body {
     margin: 0;
     padding: 0;
-    width: 100vw; /* Ensure it takes full viewport width */
-    height: 100vh; /* Ensure it takes full viewport height */
+    width: 100%; /* Ensure it takes full viewport width */
+    height: 100%; /* Ensure it takes full viewport height */
     overflow-x: hidden; /* Prevent horizontal scrolling */
     display: block; /* Ensure it behaves as a block element filling space */
     font-family: 'Inter', sans-serif; /* Set font globally */
@@ -276,7 +279,30 @@ html, body {
     gap: 0.5rem;
     justify-content: flex-end;
 }
+.speakerButton {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #6366f1; /* Tailwind indigo-500 */
+    padding: 0.25rem;
+    border-radius: 9999px; /* Full rounded */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 200ms;
+    margin-left: 0.5rem; /* Space from product name */
+    vertical-align: middle; /* Align with text */
+}
 
+.speakerButton:hover {
+    background-color: #eef2ff; /* Tailwind indigo-50 */
+}
+
+.speakerButton:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    color: #9ca3af; /* Tailwind gray-400 */
+}
 
 /* --- Responsive Breakpoints --- */
 
@@ -312,16 +338,20 @@ html, body {
 const App = () => {
   const auth = useAuth();
 
-  const signOutRedirect = () => {
-    const clientId = "2p067oa8sj2k0u9llme1f05kj3";
-    const logoutUri = "https://d1s0dilg6yxd4e.cloudfront.net/";
-    const cognitoDomain = "https://us-east-1njntfpana.auth.us-east-1.amazoncognito.com";
-    
-    window.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
-  };
   console.log(auth)
    if (auth.isLoading) {
-    return <div>Loading...</div>;
+    
+    // return <div>Loading...</div>;
+    return  <div className="container">
+            <div className="card"><div className="loadingMessage">
+                        <svg className="spinner" viewBox="0 0 24 24">
+                            <circle className="spinnerPath" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="spinnerFill" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Loading...
+                    </div>
+                    </div>
+              </div>
   }
 
   if (auth.error) {
@@ -359,6 +389,16 @@ const App = () => {
 
     // New state for search term
     const [searchTerm, setSearchTerm] = useState('');
+    const [speakingProductId, setSpeakingProductId] = useState(null);
+      // S3 related states
+    const [s3BucketInput, setS3BucketInput] = useState('');
+    const [s3ObjectKeyInput, setS3ObjectKeyInput] = useState('');
+    const [generatedS3Url, setGeneratedS3Url] = useState('');
+    const [s3OperationLoading, setS3OperationLoading] = useState(false);
+    const [s3GeneratedAudioUrl, setS3GeneratedAudioUrl] = useState(''); // For playing audio from S3 URL
+    const [s3Client, setS3Client] = useState(null); // S3Client state
+
+     
 
     // Placeholder for your API Gateway base URL
     // IMPORTANT: Replace this with your actual AWS API Gateway URL
@@ -369,21 +409,99 @@ const App = () => {
         setMessage({ text: msg, type });
         setTimeout(() => setMessage(''), 3000); // Clear message after 3 seconds
     };
+    const { user, authError, isLoading: authIsLoading, isAuthenticated} = useAuth(); // Ge, t user from react-oidc-context
+  useEffect(() => {
+      const initializeS3ClientWithoutAmplify = async () => {
+          if (user && user.id_token) {
+              try {
+                  // This function dynamically fetches and refreshes temporary AWS credentials
+                  const credentialsProvider = fromCognitoIdentityPool({
+                      identityPoolId: 'us-east-1:72841e45-3285-47d4-b207-de7dc5a768df', // Replace with your actual Identity Pool ID
+                      clientConfig: { region: 'us-east-1' }, // Your AWS region
+                      logins: {
+                          // Map your User Pool authority to the ID token
+                          'cognito-idp.us-east-1.amazonaws.com/us-east-1_njntFpaNa': user.id_token
+                          // Format: 'cognito-idp.{region}.amazonaws.com/{userPoolId}': user.id_token
+                      },
+                  });
 
-    // --- FETCH (Read) Operation ---
+                  const newS3Client = new S3Client({
+                      region: 'us-east-1', // Your AWS region
+                      credentials: credentialsProvider // Pass the credentials provider function
+                  });
+                  setS3Client(newS3Client);
+                  console.log("S3Client initialized without Amplify, using Identity Pool credentials.");
+              } catch (e) {
+                  console.error("Error initializing S3Client without Amplify:", e);
+                  // Handle error, e.g., show message to user
+              }
+          } else {
+              setS3Client(null);
+          }
+      };
+
+      initializeS3ClientWithoutAmplify();
+  }, [user]);
+ /*  // Function to fetch items (now includes search term)
+    const fetchItems = useCallback(async (currentSearchTerm) => { // Accept currentSearchTerm as argument
+        setLoading(true);
+        try {
+            let url = `${API_BASE_URL}/products`;
+            const queryParams = [];
+
+            
+
+            // Use the argument for search term
+            if (currentSearchTerm) {
+                queryParams.push(`search=${encodeURIComponent(currentSearchTerm)}`);
+            }
+
+            if (queryParams.length > 0) {
+                url += `?${queryParams.join('&')}`;
+            }
+
+            const response = await fetch(url, {headers: {'Authorization': `Bearer ${user?.id_token}`}});
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            setItems(data);
+        } catch (err) {
+            console.error("Error fetching items:", err);
+            if (!authError && !err.message.includes('token_missing')) {
+                showMessage(`Failed to fetch items: ${err.message}`, 'error');
+            }
+        } finally {
+            setLoading(false);
+        }
+    }, [API_BASE_URL, fetch, user, showMessage]); */
+
+    
+   // --- FETCH (Read) Operation ---
     useEffect(() => {
-        const fetchItems = async () => {
+        const fetchItems = async (currentSearchTerm) => {
             setLoading(true);
             setError(null);
             try {
-                const response = await fetch(`${API_BASE_URL}/products?user=${auth.user?.profile.email}`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                let data = await response.json();
-                console.log(auth)
-                // data = data.filter(d => d.user === auth.user?.profile.email);
-                setItems(data);
+              let url = `${API_BASE_URL}/products`;
+              const queryParams = [];
+              // Use the argument for search term
+              if (currentSearchTerm) {
+                  queryParams.push(`search=${encodeURIComponent(currentSearchTerm)}`);
+              }
+
+              if (queryParams.length > 0) {
+                  url += `?${queryParams.join('&')}`;
+              }
+
+              const response = await fetch(url, {headers: {'Authorization': `Bearer ${user?.id_token}`}});
+
+              if (!response.ok) {
+                  throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              const data = await response.json();
+              setItems(data);
             } catch (err) {
                 setError(`Failed to fetch items: ${err.message}`);
                 showMessage(`Failed to fetch items: ${err.message}`, 'error');
@@ -395,10 +513,47 @@ const App = () => {
         fetchItems();
     }, [API_BASE_URL]);
 
+    const doFetchItems = useCallback(async (currentSearchTerm) => {
+        setLoading(true);
+        try {
+            let url = `${API_BASE_URL}/products`;
+            const queryParams = [];
+
+            // Use the argument for search term
+            if (currentSearchTerm) {
+                queryParams.push(`search=${encodeURIComponent(currentSearchTerm)}`);
+            }
+
+            if (queryParams.length > 0) {
+                url += `?${queryParams.join('&')}`;
+            }
+
+            const response = await fetch(url, {headers: {'Authorization': `Bearer ${user?.id_token}`}});
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            setItems(data);
+        } catch (err) {
+            console.error("Error fetching items:", err);
+            showMessage(`Failed to fetch items: ${err.message}`, 'error');
+        } finally {
+            setLoading(false);
+        }
+    }, [API_BASE_URL, showMessage, setItems]);
+
+
     // Filter items based on searchTerm (client-side filtering for demonstration)
     const filteredItems = items.filter(item =>
         item.productname.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    ); 
+    // Direct search handler for the input field
+    const handleSearchChange = (e) => {
+        const newTerm = e.target.value;
+        setSearchTerm(newTerm); // Update the state
+        doFetchItems(newTerm)// Immediately trigger fetch with the new term
+    };
 
     // --- CREATE Operation ---
     const handleAddItem = async () => {
@@ -422,6 +577,7 @@ const App = () => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${user?.id_token}`
                 },
                 body: JSON.stringify({
                     productname: newProductName,
@@ -457,6 +613,7 @@ const App = () => {
         try {
             const response = await fetch(`${API_BASE_URL}/products/${productId}`, {
                 method: 'DELETE',
+                headers: {'Authorization': `Bearer ${user?.id_token}`}
             });
 
             if (!response.ok) {
@@ -469,6 +626,30 @@ const App = () => {
         } catch (err) {
             setError(`Failed to delete item: ${err.message}`);
             showMessage(`Failed to delete item: ${err.message}`, 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSearchItem = async (productSearchTerm) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const response = await fetch(`${API_BASE_URL}/products?search=${productSearchTerm}`, {
+                method: 'GET',
+                headers: {'Authorization': `Bearer ${user?.id_token}`}
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`HTTP error! status: ${response.status} - ${errorData.message || 'Unknown error'}`);
+            }
+
+            // setItems(items.filter((item) => item.productid !== productSearchTerm));
+            // showMessage('Item deleted successfully!');
+        } catch (err) {
+            setError(`Failed to search item: ${err.message}`);
+            showMessage(`Failed to search item: ${err.message}`, 'error');
         } finally {
             setLoading(false);
         }
@@ -504,6 +685,7 @@ const App = () => {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${user?.id_token}`
                 },
                 body: JSON.stringify({
                     productname: editingProductName,
@@ -549,8 +731,50 @@ const App = () => {
         setEditingQuantity('');
         setEditingPrice('');
     };
+
+    const handleGenerateS3GetSignedUrl = async (key) => {
+
+      try {
+          const getCommand = new GetObjectCommand({
+              Bucket: 'ecom-polly-audio',
+              Key: `${key}.mp3`,
+          });
+          // Generate a pre-signed URL for GET operation
+          const url = await getSignedUrl(s3Client, getCommand, {
+              expiresIn: 3600, // URL expires in 1 hour (adjust as needed)
+          });
+
+          
+          showMessage(`GET Signed URL generated successfully!`, 'success');
+          console.log("Generated S3 GET Signed URL:", url);
+           const audio = new Audio(url);
+            audio.onended = () => {
+                setSpeakingProductId(null);
+            };
+            audio.onerror = (e) => {
+                console.error("Error playing audio from S3 URL:", e);
+                showMessage(`Failed to play audio from S3: ${e.message || 'Unknown error'}. Check S3 key and permissions.`, 'error');
+                setSpeakingProductId(null);
+            };
+            audio.play();
+            console.log(`Playing audio from S3: ${url}`);
+      } catch (error) {
+          console.error("Error generating S3 GET signed URL:", error);
+          showMessage(`Failed to generate S3 GET signed URL: ${error.message}. Ensure S3 bucket exists and correct IAM permissions for Cognito Identity Pool.`);
+      } finally {
+          setS3OperationLoading(false);
+      }
+  };
+  
   if (auth.isAuthenticated) {
 
+  const signOutRedirect = () => {
+    const clientId = "2p067oa8sj2k0u9llme1f05kj3";
+    const logoutUri = "https://d1s0dilg6yxd4e.cloudfront.net/";
+    const cognitoDomain = "https://us-east-1njntfpana.auth.us-east-1.amazoncognito.com";
+    auth.removeUser();
+    window.location.replace(`${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`);
+  };
     return (
         <div className="container">
             <div className="card">
@@ -608,7 +832,8 @@ const App = () => {
                         className="inputField"
                         placeholder="Search products by name..."
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        // onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={handleSearchChange}
                     />
                 </div>
 
@@ -689,6 +914,16 @@ const App = () => {
                                     // Display mode
                                     <div className="productDetails">
                                         <p className="productName">{item.productname}</p>
+                                        <button
+                                                onClick={() =>handleGenerateS3GetSignedUrl(item.productid)}
+                                                className="speakerButton"
+                                                title="Read product name"
+                                            >
+                                                <Volume2 size={20} />
+                                               {/*  {speakingProductId === item.productid && (
+                                                    <span className="ml-2 text-xs text-indigo-600">Speaking...</span>
+                                                )} */}
+                                            </button>
                                         <p className="productInfo">Quantity: {item.quantity}</p>
                                         <p className="productInfo">Price: ${item.price ? item.price.toFixed(2) : 'N/A'}</p>
                                     </div>
@@ -717,7 +952,7 @@ const App = () => {
                         ))}
                     </ul>
                 )}
-                
+                                
               <div className="addSection"> <button className='addButton' onClick={() => signOutRedirect()}  disabled={loading}>Sign out</button> </div>
             </div>
         </div>
